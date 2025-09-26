@@ -1,3 +1,3 @@
 #!/usr/bin/sh
 gh auth logout
-rm - rf ~/autonomy
+rm -rf ~/autonomy
