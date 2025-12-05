@@ -16,7 +16,7 @@ class Frontier_Explorer(Node):
         self.occupancy: T.Optional[StochOccupancyGrid2D] = None
         self.nav_success = None
         self.state = None
-        self.state_flag = 0 
+        self.state_flag = 0
         self.map_flag = 0
         self.stop_flag = 0 # 0 means no stop sign detected
         self.start_explore_flag = 0
@@ -24,13 +24,13 @@ class Frontier_Explorer(Node):
         self.current_time = 0
         self.declare_parameter("active", True)
 
-        self.state_sub = # TODO make subscriber node
-        self.map_sub = # TODO make subscriber node
-        self.nav_success_sub = # TODO make subscriber node
+        self.state_sub = self.create_subscription(TurtleBotState, "/state", self.state_callback, 10) # TODO make subscriber node
+        self.map_sub = self.create_subscription(OccupancyGrid, "/map", self.map_callback, 10) # TODO make subscriber node
+        self.nav_success_sub = self.create_subscription(Bool, "/nav_success", self.nav_success_cb, 10) # TODO make subscriber node
         self.cmd_nav_pub = self.create_publisher(TurtleBotState, "/cmd_nav", 10)
         self.detector_sub = self.create_subscription(Bool, "/detector_bool", self.detector_cb, 10)
-    
-        
+
+
     def explore(self):
         """ returns potential states to explore
         Args:
@@ -42,33 +42,33 @@ class Frontier_Explorer(Node):
         print("Running Explore\n")
         window_size = 13    # defines the window side-length for neighborhood of cells to consider for heuristics
         current_state = np.array([self.state.x, self.state.y])
-        
+
         occupied_mask = np.where(self.occupancy.probs >= 0.5, 1, 0)
-		unknown_mask = # TODO use np.where to find unknown mask which is indicated by the value -1
-		unoccupied_mask = # TODO use np.where to find unknown mask which is indicated by values in range [0, 0.5)
+        unknown_mask = np.where(self.occupancy.probs == -1, 1, 0)# TODO use np.where to find unknown mask which is indicated by the value -1
+        unoccupied_mask =np.where((self.occupancy.probs >= 0) & (self.occupancy.probs < 0.5), 1, 0) # TODO use np.where to find unknown mask which is indicated by values in range [0, 0.5)
 
-        kernel = # TODO define the kernel
-        occupied=# TODO 2d convolution of mask (use convolve2d) using kernel and mode='same'
-        unoccupied=# TODO 2d convolution of mask (use convolve2d) using kernel and mode='same'
-        unknown= # TODO 2d convolution of mask (use convolve2d) using kernel and mode='same'
+        kernel = np.ones((window_size, window_size)) / window_size**2 # TODO define the kernel
+        occupied=convolve2d(occupied_mask, kernel, mode='same')
+        unoccupied=convolve2d(unoccupied_mask, kernel, mode='same')
+        unknown= convolve2d(unknown_mask, kernel, mode='same')
 
-        frontier_mask = # TODO use np.where to make frontier mask based on the 3 conditions of Exploration Heuristics
+        frontier_mask =  np.where((occupied == 0) & (unknown >= 0.2) & (unoccupied >= 0.3), 1, 0) # TODO use np.where to make frontier mask based on the 3 conditions of Exploration Heuristics
         frontier_states = np.transpose(np.nonzero(np.transpose(frontier_mask)))
         frontier_states = self.occupancy.grid2state(frontier_states)
-        
+
         if len(frontier_states) == 0:
             print("Finished exploring")
 
         frontier_state  = np.argmin(np.linalg.norm(frontier_states-current_state,axis=1))
         frontier_state = frontier_states[frontier_state,:]
 
-       
-        msg = # TODO
-        msg.x, msg.y = #TODO
-	    # TODO below publish frontier state into cmd_nav topic
-		
 
-    
+        msg = TurtleBotState() # TODO
+        msg.x, msg.y = frontier_state
+        self.cmd_nav_pub.publish(msg)
+        print(f"Exploring to new frontier at {frontier_state}\n")
+
+
     def nav_success_cb(self, msg: Bool) -> None:
         """ Callback triggered when nav_success is updated
 
@@ -76,9 +76,9 @@ class Frontier_Explorer(Node):
             msg (Bool): updated nav_success message
         """
         # current_time = self.get_clock().now().nanoseconds/1e9
-        if self.active: 
+        if self.active:
             self.explore()
-        # else:           
+        # else:
         #     if (current_time-self.prev_time)<=5:
         #         pass
         #     else:
@@ -86,7 +86,7 @@ class Frontier_Explorer(Node):
         #         self.prev_time = 0
         #         self.set_parameters([rclpy.Parameter("active",value = True)])
 
-        # self.explore()       
+        # self.explore()
         print("i got a message")
         self.nav_success = msg
 
@@ -120,11 +120,11 @@ class Frontier_Explorer(Node):
             self.explore()
             self.map_flag=0
 
-    @property  
+    @property
     def active(self)-> bool:
         return self.get_parameter("active").value
-    
-         
+
+
     def detector_cb(self, msg:Bool):
         if msg.data and (self.stop_flag == 0):
             self.set_parameters([rclpy.Parameter("active",value = False)])
@@ -140,7 +140,7 @@ class Frontier_Explorer(Node):
         #     self.active = self.set_parameters([rclpy.Parameter("active",value = False)])
         #     msg = self.state
         #     self.cmd_nav_pub.publish(self.state)
-            
+
         # else: # if it's not detected
         self.current_time = self.get_clock().now().nanoseconds/1e9
         if (self.current_time - self.prev_time) <= 5:
@@ -159,14 +159,14 @@ class Frontier_Explorer(Node):
             # self.explore()
             self.stop_flag = 0
             self.prev_time = 0
-        
+
         self.start_explore_flag = 0
-        
-            
+
+
         # return msg
 
-    
-            
+
+
 
 def main():
     rclpy.init(args=None)
